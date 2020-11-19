@@ -339,7 +339,7 @@ fn test_beam_siphash_2_4() {
         0x03, 0x04, 0xf6, 0xf2, 0xac, 0x18, 0x98, 0x68
     ];
     let nonce = 3414214;
-    let mut hasher = BeamSipHasher24::new_with_nonce();
+    let mut hasher = BeamSipHasher24::new_with_nonce(nonce);
     hasher.set_state_from_bytes(pow_state);
     let expected_hash = 12899870395040861258 as u64;
     let hash = hasher.finish();

@@ -35,6 +35,13 @@ pub struct SipHasher24 {
     hasher: Hasher<Sip24Rounds>,
 }
 
+#[derive(Debug, Clone, Copy, Default)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct BeamSipHasher24 {
+    hasher: Hasher<Sip24Rounds>,
+    nonce: u64,
+}
+
 /// An implementation of SipHash 2-4.
 ///
 /// See: <https://131002.net/siphash/>
@@ -140,6 +147,26 @@ unsafe fn u8to64_le(buf: &[u8], start: usize, len: usize) -> u64 {
     out
 }
 
+impl State {
+    pub fn from_bytes(data: &[u8]) -> Option<State> {
+        if data.len() != 32 {
+            return None;
+        }
+
+        let v0 = unsafe { load_int_le!(data, 0, u64) };
+        let v1 = unsafe { load_int_le!(data, 8, u64) };
+        let v2 = unsafe { load_int_le!(data, 8 * 2, u64) };
+        let v3 = unsafe { load_int_le!(data, 8 * 3, u64) };
+
+        Some(State {
+            v0: v0,
+            v1: v1,
+            v2: v2,
+            v3: v3,
+        })
+    }
+}
+
 impl SipHasher {
     /// Creates a new `SipHasher` with the two initial keys set to 0.
     #[inline]
@@ -198,6 +225,40 @@ impl SipHasher24 {
     /// Get the keys used by this hasher
     pub fn keys(&self) -> (u64, u64) {
         (self.hasher.k0, self.hasher.k1)
+    }
+}
+
+impl BeamSipHasher24 {
+    /// Creates a new `BeamSipHasher24` with the two initial keys set to 0.
+    #[inline]
+    pub fn new() -> Self {
+        Self::new_with_keys_and_nonce(0, 0, 0)
+    }
+
+    /// Creates a new `BeamSipHasher24` with the provided nonce and two initial keys set to 0.
+    #[inline]
+    pub fn new_with_nonce(nonce: u64) -> Self {
+        Self::new_with_keys_and_nonce(0, 0, nonce)
+    }
+
+    /// Creates a `BeamSipHasher24` that is keyed off the provided keys and nonce.
+    #[inline]
+    fn new_with_keys_and_nonce(key0: u64, key1: u64, nonce: u64) -> Self {
+        BeamSipHasher24 {
+            hasher: Hasher::new_with_keys(key0, key1),
+            nonce: nonce,
+        }
+    }
+
+    #[inline]
+    /// Sets SipHasher from the provided byte slice
+    pub fn set_state_from_bytes(&mut self, data: &[u8]) -> bool {
+        if let Some(new_state) = State::from_bytes(data) {
+            self.hasher.state = new_state;
+            true
+        } else {
+            false
+        }
     }
 }
 
@@ -297,6 +358,45 @@ impl hash::Hasher for SipHasher24 {
     #[inline]
     fn finish(&self) -> u64 {
         self.hasher.finish()
+    }
+}
+
+impl Sip for BeamSipHasher24 {
+    #[inline]
+    fn c_rounds(state: &mut State) {
+        compress!(state);
+        compress!(state);
+    }
+
+    #[inline]
+    fn d_rounds(state: &mut State) {
+        compress!(state);
+        compress!(state);
+        compress!(state);
+        compress!(state);
+    }
+}
+
+impl hash::Hasher for BeamSipHasher24 {
+    #[inline]
+    fn write(&mut self, msg: &[u8]) {
+        self.hasher.write(msg)
+    }
+
+    #[inline]
+    fn finish(&self) -> u64 {
+        let mut state = self.hasher.state;
+
+        let b = self.nonce;
+
+        state.v3 ^= b;
+        Self::c_rounds(&mut state);
+        state.v0 ^= b;
+
+        state.v2 ^= 0xff;
+        Self::d_rounds(&mut state);
+
+        state.v0 ^ state.v1 ^ state.v2 ^ state.v3
     }
 }
 

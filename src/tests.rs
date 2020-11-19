@@ -8,7 +8,7 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-use super::sip::{SipHasher, SipHasher13, SipHasher24};
+use super::sip::{SipHasher, SipHasher13, SipHasher24, BeamSipHasher24};
 use std::hash::{Hash, Hasher};
 
 // Hash just the bytes of the slice, without length prefix
@@ -328,4 +328,25 @@ fn test_hash_serde() {
     let serialized = serde_json::to_string(&hash).unwrap();
     let deserialized: u64 = serde_json::from_str(&serialized).unwrap();
     assert_eq!(hash, deserialized);
+}
+
+#[test]
+fn test_beam_siphash_2_4() {
+    let pow_state = &[
+        0xc0, 0x9d, 0xd9, 0x3e, 0xf2, 0x5c, 0xdb, 0xa0,
+        0x95, 0xc9, 0x9f, 0xab, 0x3c, 0x5f, 0xfb, 0xac,
+        0x3e, 0x72, 0xaf, 0x34, 0x96, 0xd8, 0xb4, 0x8d,
+        0x03, 0x04, 0xf6, 0xf2, 0xac, 0x18, 0x98, 0x68
+    ];
+    let nonce = 3414214;
+    let mut hasher = BeamSipHasher24::new_with_nonce();
+    hasher.set_state_from_bytes(pow_state);
+    let expected_hash = 12899870395040861258 as u64;
+    let hash = hasher.finish();
+
+    libc_println!();
+    libc_println!("Beam Hash III hasher: {:?}", hasher);
+    libc_println!();
+
+    assert_eq!(hash, expected_hash);
 }

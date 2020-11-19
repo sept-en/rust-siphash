@@ -3,7 +3,12 @@
 #![allow(clippy::cast_lossless)]
 
 #[cfg(test)]
+#[macro_use]
 extern crate core;
+
+#[cfg(test)]
+#[macro_use]
+extern crate libc_print;
 
 pub mod sip;
 pub mod sip128;
